@@ -87,6 +87,7 @@ def download_instagram_media(url):
                 'title': info.get('title', 'Instagram Media')
             }
     except Exception as e:
+        print(f"DEBUG: yt-dlp Error for {url}: {str(e)}")
         return {'success': False, 'error': str(e)}
 
 # --- Keyboards ---
@@ -176,7 +177,9 @@ def handle_instagram(message):
                 # but for simplicity and speed, we provide the link as fallback.
                 bot.send_message(cid, f"<b>⚠️ Media yuborishda muammo bo'ldi.</b>\n<a href='{item['url']}'>🔗 Mana bu yerda ko'rishingiz mumkin</a>", parse_mode='HTML')
     else:
-        bot.send_message(cid, "<b>❌ Xatolik yuz berdi!</b>\nIltimos, havola to'g'ri ekanligini tekshiring.", parse_mode='HTML')
+        error_msg = result.get('error', 'Unknown error')
+        print(f"DEBUG: Extraction failed for {url}: {error_msg}")
+        bot.send_message(cid, f"<b>❌ Xatolik yuz berdi!</b>\n\n<blockquote>{error_msg}</blockquote>\n\nIltimos, havola to'g'ri ekanligini tekshiring.", parse_mode='HTML')
 
 # --- Start Bot ---
 if __name__ == "__main__":
