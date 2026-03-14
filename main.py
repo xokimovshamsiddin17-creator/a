@@ -3,10 +3,23 @@ import yt_dlp
 import os
 import json
 import re
+import sys
+import socket
 import requests
 from datetime import datetime
 from telebot import types
 from dotenv import load_dotenv
+
+# Prevent multiple instances by binding to a local port
+def acquire_single_instance_lock(port=9876):
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("127.0.0.1", port))
+        # Keep the socket open until the script exits
+        return s
+    except socket.error:
+        print("Error: Another instance of the bot is already running.")
+        sys.exit(1)
 
 # --- Configuration ---
 load_dotenv()
@@ -54,10 +67,14 @@ def download_instagram_media(url):
         'extract_flat': False, # We need links, but not necessarily files
         'force_generic_extractor': False,
         'nocheckcertificate': True,
-        'ignoreerrors': True,
+        'ignoreerrors': False, # Set to False to catch rate limits/login errors
         'logtostderr': False,
         'skip_download': True, # Crucial for speed: don't download the file locally
     }
+    
+    # Allow loading cookies from cookies.txt
+    if os.path.exists('cookies.txt'):
+        ydl_opts['cookiefile'] = 'cookies.txt'
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # Extract info once
@@ -87,8 +104,16 @@ def download_instagram_media(url):
                 'title': info.get('title', 'Instagram Media')
             }
     except Exception as e:
-        print(f"DEBUG: yt-dlp Error for {url}: {str(e)}")
-        return {'success': False, 'error': str(e)}
+        error_msg = str(e)
+        print(f"DEBUG: yt-dlp Error for {url}: {error_msg}")
+        
+        # Graceful handling of common Instagram errors
+        if "login required" in error_msg.lower() or "rate-limit" in error_msg.lower():
+            user_error = "Instagram yuklab olishda muammo yuz berdi (Rate limit yoki Akkaunt so'raldi). Bot adminlari tez orada muammoni hal qilishadi."
+        else:
+            user_error = error_msg
+            
+        return {'success': False, 'error': user_error}
 
 # --- Keyboards ---
 def get_main_keyboard():
@@ -183,5 +208,17 @@ def handle_instagram(message):
 
 # --- Start Bot ---
 if __name__ == "__main__":
-    print("Bot is running with yt-dlp...")
-    bot.infinity_polling()
+    # Prevent duplicate polling threads/instances
+    _lock_socket = acquire_single_instance_lock()
+    
+    print("Bot is initializing...")
+    try:
+        # Remove webhook if it was set previously to prevent 409 Conflict
+        bot.remove_webhook()
+        print("Webhook removed (if any).")
+    except Exception as e:
+        print(f"Error removing webhook: {e}")
+        
+    print("Bot is running with yt-dlp and infinity polling...")
+    # Safe polling with parameters to prevent crashes
+    bot.infinity_polling(timeout=10, long_polling_timeout=5)
